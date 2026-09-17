@@ -1295,6 +1295,27 @@ async def websocket_endpoint(
                     int(time.time() * 1000) + 30000
                 )
                 print("[CN CALL][CALL_ACCEPT SERVER] call_id=", call_id)
+
+                # Explicit acknowledgement for the accepting endpoint.
+                # The ACK is sent only AFTER the authoritative state has
+                # changed to "accepted", so the native caller never requests
+                # a LiveKit token while the server still sees "ringing".
+                try:
+                    await websocket.send_json({
+                        "type": "call_accept_ack",
+                        "call_id": call_id,
+                        "target_id": expected_target,
+                        "from_id": user_id,
+                    })
+                    print(
+                        "[CN CALL][CALL_ACCEPT ACK SENT] "
+                        f"call_id={call_id} target={user_id}"
+                    )
+                except Exception as exc:
+                    print(
+                        "[CN CALL][CALL_ACCEPT ACK FAILED] "
+                        f"call_id={call_id} target={user_id} error={exc}"
+                    )
             elif message_type == "offer":
                 record["connection_expires_at"] = (
                     int(time.time() * 1000) + 30000
