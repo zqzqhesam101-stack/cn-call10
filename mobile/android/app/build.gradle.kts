@@ -14,7 +14,6 @@ configurations.configureEach {
 }
 
 dependencies {
-    implementation("androidx.core:core-telecom:1.1.0-beta01")
     implementation("com.google.firebase:firebase-messaging:24.1.2")
     implementation("io.livekit:livekit-android:2.11.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

@@ -74,7 +74,6 @@ object CNCallEngine {
      * into Connection state.
      */
     interface Callbacks {
-        fun onCallStarted(targetOnline: Boolean)
         fun onMediaReady()
         fun onDisconnected()
         fun onError(message: String)
@@ -472,22 +471,41 @@ object CNCallEngine {
 
             // Verified: rtc_call_manager.dart _acceptCall() (lines 486-490) and
             // server/main.py "call_accept" (line 1139): target, status ringing.
+            // Record that this endpoint has requested acceptance BEFORE the
+            // async WebSocket send can race with the server ACK callback.
+            synchronized(lock) {
+                if (callId == scoredCallId) {
+                    acceptedCallId = callId
+                }
+            }
+
             val sent = NativeWebSocketClient.send(
                 "call_accept",
                 mapOf("call_id" to callId, "target_id" to targetId),
             )
-            synchronized(lock) {
-                if (callId == scoredCallId) acceptedCallId = callId
+
+            if (!sent) {
+                synchronized(lock) {
+                    if (callId == scoredCallId) {
+                        acceptedCallId = null
+                    }
+                }
+                println(
+                    "[CN CALL][ENGINE] call_accept send failed " +
+                        "call_id=$callId"
+                )
+                return false
             }
 
-            if (sent) {
-                // Only the signalling step is done. This is NOT accepted/
-                // connected yet: media-ready is delivered later exclusively by
-                // NativeLiveKit state + the engine LiveKit listener
-                // (callbacks.onMediaReady).
-                startLiveKitConnect(callId)
-            }
-            return sent
+            // IMPORTANT: do not fetch the LiveKit token yet.
+            // Native media starts only after the server sends
+            // "call_accept_ack", which is emitted after the server has
+            // committed status="accepted".
+            println(
+                "[CN CALL][ENGINE] call_accept sent; waiting for server ACK " +
+                    "call_id=$callId"
+            )
+            return true
         }
 
         override fun reject(callId: String): Boolean {
@@ -927,7 +945,7 @@ object CNCallEngine {
                         payload["target_online"]
                             ?.trim()
                             ?.equals("true", ignoreCase = true)
-                            == true
+                            ?: false
 
                     var isStale = false
                     synchronized(lock) {
@@ -945,7 +963,6 @@ object CNCallEngine {
                             "[CN CALL][ENGINE] signaling call_started" +
                                 " call_id=$frameCallId target_online=$targetOnline",
                         )
-                        callbacks?.onCallStarted(targetOnline)
                     }
                 }
 
@@ -974,6 +991,31 @@ object CNCallEngine {
 
                     if (shouldStartMedia) {
                         startLiveKitConnect(frameCallId)
+                    }
+                }
+
+                "call_accept_ack" -> {
+                    val shouldStartMedia: Boolean
+
+                    synchronized(lock) {
+                        shouldStartMedia =
+                            frameCallId.isNotEmpty() &&
+                                frameCallId == scoredCallId &&
+                                !isCaller &&
+                                acceptedCallId == frameCallId
+                    }
+
+                    if (shouldStartMedia) {
+                        println(
+                            "[CN CALL][ENGINE] server accepted call_id=$frameCallId; " +
+                                "starting LiveKit",
+                        )
+                        startLiveKitConnect(frameCallId)
+                    } else {
+                        println(
+                            "[CN CALL][ENGINE] stale call_accept_ack " +
+                                "call_id=$frameCallId",
+                        )
                     }
                 }
 

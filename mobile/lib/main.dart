@@ -1,8 +1,7 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:uuid/uuid.dart';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -169,7 +168,6 @@ class _LoginScreenState extends State<LoginScreen>
   bool hidePassword = true;
 
   CnSetupState _setupState = CnSetupState.checking;
-  bool _hasReadPhoneNumbers = false;
   bool _phoneAccountEnabled = false;
   bool _hasPromptedPhoneAccount = false;
   bool _setupCheckInProgress = false;
@@ -242,12 +240,10 @@ class _LoginScreenState extends State<LoginScreen>
       if (!mounted) return;
       setState(() {
         _setupState = CnSetupState.ready;
-        _hasReadPhoneNumbers = true;
         _phoneAccountEnabled = true;
       });
     } else {
       setState(() {
-        _hasReadPhoneNumbers = hasPermission;
         _phoneAccountEnabled = accountEnabled;
         _setupState = CnSetupState.unconfigured;
       });
@@ -279,53 +275,6 @@ class _LoginScreenState extends State<LoginScreen>
       }
     }
   }
-
-  Future<void> _runSetup() async {
-    var hasPermission = false;
-    try {
-      hasPermission =
-          await _telecomChannel.invokeMethod<bool>('hasStartupPermissions') ??
-          false;
-    } on PlatformException {
-      hasPermission = false;
-    }
-
-    if (!hasPermission) {
-      _message('ط£ظƒظ…ظ„ ط£ط°ظˆظ†ط§طھ ط§ظ„ط¨ط¯ط§ظٹط© ط£ظˆظ„ظ‹ط§: ط§ظ„ظ…ظٹظƒط±ظˆظپظˆظ† ظˆط£ط±ظ‚ط§ظ… ط§ظ„ظ‡ط§طھظپ');
-      return;
-    }
-
-    try {
-      await _telecomChannel.invokeMethod<bool>('registerCNCallPhoneAccount');
-    } on PlatformException {
-      // best-effort; enablement check below is authoritative.
-    }
-
-    var enabled = false;
-    try {
-      enabled =
-          await _telecomChannel.invokeMethod<bool>(
-                'isCNCallPhoneAccountEnabled',
-              ) ??
-              false;
-    } on PlatformException {
-      enabled = false;
-    }
-
-    if (!enabled) {
-      _message('ظپط¹ظ‘ظ„ ط­ط³ط§ط¨ CN CALL ظ…ظ† ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ظ…ظƒط§ظ„ظ…ط§طھ ط«ظ… ط¹ط¯ ظ„ظ„طھط·ط¨ظٹظ‚');
-      try {
-        await _telecomChannel.invokeMethod<bool>('openTelecomCallSettings');
-      } on PlatformException {
-        // Opening settings is best-effort; the resume re-check still runs.
-      }
-      return;
-    }
-
-    await _verifySetup();
-  }
-
-
   void _showPhoneAccountDialog() {
     if (!mounted) return;
     showDialog<void>(
@@ -348,7 +297,7 @@ class _LoginScreenState extends State<LoginScreen>
               SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'طھظپط¹ظٹظ„ ط­ط³ط§ط¨ CN CALL ظ„ظ„ظ…ظƒط§ظ„ظ…ط§طھ',
+                  'تفعيل حساب CN CALL للمكالمات',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 17,
@@ -359,7 +308,7 @@ class _LoginScreenState extends State<LoginScreen>
             ],
           ),
           content: const Text(
-            'ظٹظ„ط²ظ… طھظپط¹ظٹظ„ "ط­ط³ط§ط¨ ط§ظ„ظ…ظƒط§ظ„ظ…ط§طھ" ظ„ظ€ CN CALL ظ…ظ† ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ظ†ط¸ط§ظ… ظ„ط¶ظ…ط§ظ† ط§ط³طھظ‚ط¨ط§ظ„ ظˆط¥ط¬ط±ط§ط، ط§ظ„ظ…ظƒط§ظ„ظ…ط§طھ ط¹ط¨ط± ظˆط§ط¬ظ‡ط© ط§ظ„ظ‡ط§طھظپ ط§ظ„ط±ط³ظ…ظٹط©.',
+            'يلزم تفعيل "حساب المكالمات" لـ CN CALL من إعدادات النظام لضمان استقبال وإجراء المكالمات عبر واجهة الهاتف الرسمية.',
             style: TextStyle(
               color: Colors.white70,
               fontSize: 14,
@@ -380,7 +329,7 @@ class _LoginScreenState extends State<LoginScreen>
                 ),
               ),
               child: const Text(
-                'طھظپط¹ظٹظ„ ط§ظ„ط­ط³ط§ط¨',
+                'تفعيل الحساب',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
             ),
@@ -405,14 +354,14 @@ class _LoginScreenState extends State<LoginScreen>
       });
 
       if (!enabled) {
-        _message('ظپط¹ظ‘ظ„ ط­ط³ط§ط¨ CN CALL ظ…ظ† ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ظ…ظƒط§ظ„ظ…ط§طھ ط«ظ… ط¹ط¯ ظ„ظ„طھط·ط¨ظٹظ‚');
+        _message('فعّل حساب CN CALL من إعدادات المكالمات ثم عد للتطبيق');
         await _telecomChannel.invokeMethod<bool>('openTelecomCallSettings');
       } else {
-        _message('ط­ط³ط§ط¨ CN CALL ظ…ظپط¹ظ‘ظ„', success: true);
+        _message('حساب CN CALL مفعّل', success: true);
       }
     } on PlatformException catch (error) {
       if (!mounted) return;
-      _message('طھط¹ط°ط± ط¥ط¹ط¯ط§ط¯ Phone Account: ${error.message ?? error.code}');
+      _message('تعذر إعداد Phone Account: ${error.message ?? error.code}');
     }
   }
 
@@ -425,7 +374,7 @@ class _LoginScreenState extends State<LoginScreen>
 
   Future<void> login() async {
     if (_setupState != CnSetupState.ready) {
-      _message('ط£ظƒظ…ظ„ ط¥ط¹ط¯ط§ط¯ CN CALL ط£ظˆظ„ظ‹ط§ ط¹ط¨ط± ط²ط± "ط¥ط¹ط¯ط§ط¯ CN CALL" ط«ظ… ط³ط¬ظ‘ظ„ ط§ظ„ط¯ط®ظˆظ„');
+      _message('أكمل إعداد CN CALL أولًا ثم سجّل الدخول');
       return;
     }
 
@@ -433,17 +382,17 @@ class _LoginScreenState extends State<LoginScreen>
     final password = passwordController.text;
 
     if (userId.isEmpty) {
-      _message('ط£ط¯ط®ظ„ ID ط§ظ„ظ…ط³طھط®ط¯ظ…');
+      _message('أدخل ID المستخدم');
       return;
     }
 
     if (int.tryParse(userId) == null) {
-      _message('ID ط§ظ„ظ…ط³طھط®ط¯ظ… ظٹط¬ط¨ ط£ظ† ظٹظƒظˆظ† ط£ط±ظ‚ط§ظ…ظ‹ط§ ظپظ‚ط·');
+      _message('ID المستخدم يجب أن يكون أرقامًا فقط');
       return;
     }
 
     if (password.isEmpty) {
-      _message('ط£ط¯ط®ظ„ ظƒظ„ظ…ط© ط§ظ„ظ…ط±ظˆط±');
+      _message('أدخل كلمة المرور');
       return;
     }
 
@@ -455,7 +404,7 @@ class _LoginScreenState extends State<LoginScreen>
 
     if (!success) {
       _message(
-        result['message']?.toString() ?? 'ID ط§ظ„ظ…ط³طھط®ط¯ظ… ط£ظˆ ظƒظ„ظ…ط© ط§ظ„ظ…ط±ظˆط± ط؛ظٹط± طµط­ظٹط­ط©',
+        result['message']?.toString() ?? 'ID المستخدم أو كلمة المرور غير صحيحة',
       );
       return;
     }
@@ -463,7 +412,7 @@ class _LoginScreenState extends State<LoginScreen>
     final user = result['user'];
 
     if (user is! Map) {
-      _message('ط¨ظٹط§ظ†ط§طھ ط§ظ„ظ…ط³طھط®ط¯ظ… ط؛ظٹط± طµط§ظ„ط­ط©');
+      _message('بيانات المستخدم غير صالحة');
       return;
     }
 
@@ -477,7 +426,7 @@ class _LoginScreenState extends State<LoginScreen>
         username.isEmpty ||
         accessToken == null ||
         accessToken.isEmpty) {
-      _message('ط¨ظٹط§ظ†ط§طھ ط§ظ„ظ…ط³طھط®ط¯ظ… ظ†ط§ظ‚طµط©');
+      _message('بيانات المستخدم ناقصة');
       return;
     }
 
@@ -513,10 +462,14 @@ class _LoginScreenState extends State<LoginScreen>
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
+        backgroundColor: const Color(0xFF050505),
         body: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: 40,
+              ),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 430),
                 child: Column(
@@ -537,7 +490,7 @@ class _LoginScreenState extends State<LoginScreen>
                     const SizedBox(height: 8),
 
                     Text(
-                      'ظ…ظƒط§ظ„ظ…ط§طھ طµظˆطھظٹط© ط¨ط¯ظˆظ† ط£ط±ظ‚ط§ظ… ظ‡ط§طھظپ',
+                      'مكالمات صوتية بدون أرقام هاتف',
                       style: TextStyle(
                         color: Colors.grey.shade500,
                         fontSize: 14,
@@ -548,8 +501,8 @@ class _LoginScreenState extends State<LoginScreen>
 
                     _Field(
                       controller: userIdController,
-                      label: 'ID ط§ظ„ظ…ط³طھط®ط¯ظ…',
-                      hint: 'ط£ط¯ط®ظ„ ID ط§ظ„ظ…ط³طھط®ط¯ظ…',
+                      label: 'ID المستخدم',
+                      hint: 'أدخل ID المستخدم',
                       icon: Icons.badge_outlined,
                       keyboardType: TextInputType.number,
                     ),
@@ -558,8 +511,8 @@ class _LoginScreenState extends State<LoginScreen>
 
                     _Field(
                       controller: passwordController,
-                      label: 'ظƒظ„ظ…ط© ط§ظ„ظ…ط±ظˆط±',
-                      hint: 'ط£ط¯ط®ظ„ ظƒظ„ظ…ط© ط§ظ„ظ…ط±ظˆط±',
+                      label: 'كلمة المرور',
+                      hint: 'أدخل كلمة المرور',
                       icon: Icons.lock_outline,
                       obscureText: hidePassword,
                       suffix: IconButton(
@@ -577,44 +530,11 @@ class _LoginScreenState extends State<LoginScreen>
                     ),
 
                     const SizedBox(height: 24),
-                    if (_setupState == CnSetupState.unconfigured)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 10),
-                        child: Text(
-                          !_hasReadPhoneNumbers
-                              ? 'ظٹظ„ط²ظ… طھظپط¹ظٹظ„ طµظ„ط§ط­ظٹط© ط£ط±ظ‚ط§ظ… ط§ظ„ظ‡ط§طھظپ ظ…ظ† ط¥ط¹ط¯ط§ط¯ط§طھ طھط·ط¨ظٹظ‚ CN CALL'
-                              : !_phoneAccountEnabled
-                                  ? 'ظٹظ„ط²ظ… طھظپط¹ظٹظ„ ط­ط³ط§ط¨ CN CALL ظ…ظ† "ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ظ…ظƒط§ظ„ظ…ط§طھ" ط«ظ… ط§ظ„ط¹ظˆط¯ط©'
-                                  : 'ط£ظƒظ…ظ„ ط¥ط¹ط¯ط§ط¯ CN CALL ظ…ظ† ط²ط± "ط¥ط¹ط¯ط§ط¯ CN CALL"',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.amber.shade200,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
 
-                    const SizedBox(height: 14),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: _phoneAccountEnabled
-                              ? const Color(0xFF00E676)
-                              : Colors.white70,
-                          side: BorderSide(
-                            color: _phoneAccountEnabled
-                                ? const Color(0xFF00A85A)
-                                : Colors.grey.shade800,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                      ),
+                    _PrimaryButton(
+                      text: 'تسجيل الدخول',
+                      onPressed: login,
                     ),
-
-                    const SizedBox(height: 14),
-
-                    _PrimaryButton(text: 'طھط³ط¬ظٹظ„ ط§ظ„ط¯ط®ظˆظ„', onPressed: login),
 
                     const SizedBox(height: 12),
 
@@ -631,7 +551,7 @@ class _LoginScreenState extends State<LoginScreen>
                           ),
                         ),
                         child: const Text(
-                          'ط¥ظ†ط´ط§ط، ط­ط³ط§ط¨ ط¬ط¯ظٹط¯',
+                          'إنشاء حساب جديد',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
@@ -665,8 +585,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
-    with WidgetsBindingObserver {
+class _HomeScreenState extends State<HomeScreen> {
   final callIdController = TextEditingController();
 
   final List<Map<String, String>> _contacts = [];
@@ -674,13 +593,10 @@ class _HomeScreenState extends State<HomeScreen>
 
   bool _loadingData = true;
 
-  bool _canUseFullScreenIntent = true;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _refreshFullScreenIntentAvailability();
 
     _loadLocalData();
     _loadMissedCalls();
@@ -694,33 +610,6 @@ class _HomeScreenState extends State<HomeScreen>
 
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _refreshFullScreenIntentAvailability();
-    }
-  }
-
-  Future<void> _refreshFullScreenIntentAvailability() async {
-    try {
-      final available = await _telecomChannel.invokeMethod<bool>(
-        'canUseFullScreenIntent',
-      );
-      if (!mounted) return;
-      setState(() {
-        _canUseFullScreenIntent = available ?? true;
-      });
-    } on PlatformException {
-      if (!mounted) return;
-      setState(() {
-        _canUseFullScreenIntent = true;
-      });
-    }
-  }
-
-  Future<void> _openFullScreenIntentSettings() async {
-    await _telecomChannel.invokeMethod<bool>('openFullScreenIntentSettings');
-  }
 
   Future<void> _loadLocalData() async {
     final prefs = await SharedPreferences.getInstance();
@@ -791,25 +680,14 @@ class _HomeScreenState extends State<HomeScreen>
 
     for (final call in missed) {
       final callerId = call['caller_id']?.toString() ?? '';
-      final callerName = call['caller_name']?.toString() ?? 'ظ…ط³طھط®ط¯ظ… CN CALL';
+      final callerName = call['caller_name']?.toString() ?? 'مستخدم CN CALL';
       if (callerId.isEmpty) continue;
       await _addHistory(name: callerName, id: callerId, incoming: true);
     }
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('ظ„ط¯ظٹظƒ ظ…ظƒط§ظ„ظ…ط© ظپط§ط¦طھط©')),
-    );
-  }
-
-  Future<void> _saveContacts() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    await prefs.setStringList(
-      'cn_call_contacts',
-      _contacts
-          .map((contact) => '${contact['id']!}|${contact['name']!}')
-          .toList(),
+      const SnackBar(content: Text('لديك مكالمة فائتة')),
     );
   }
 
@@ -860,172 +738,10 @@ class _HomeScreenState extends State<HomeScreen>
     await _saveHistory();
   }
 
-  Future<void> _addContact() async {
-    final result = await _showAddContactDialog(context);
 
-    if (result == null) return;
-
-    final id = result['id']!;
-    final name = result['name']!;
-
-    if (_contacts.any((contact) => contact['id'] == id)) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ط¬ظ‡ط© ط§ظ„ط§طھطµط§ظ„ ظ…ظˆط¬ظˆط¯ط© ط¨ط§ظ„ظپط¹ظ„')),
-      );
-
-      return;
-    }
-
-    if (!mounted) return;
-
-    setState(() {
-      _contacts.add({'id': id, 'name': name});
-    });
-
-    await _saveContacts();
-
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('طھظ…طھ ط¥ط¶ط§ظپط© $name ط¥ظ„ظ‰ ط¬ظ‡ط§طھ ط§ظ„ط§طھطµط§ظ„'),
-        backgroundColor: const Color(0xFF00A85A),
-      ),
-    );
-  }
-
-  Future<void> _deleteContact(String id) async {
-    setState(() {
-      _contacts.removeWhere((contact) => contact['id'] == id);
-    });
-
-    await _saveContacts();
-  }
-
-  Future<void> _clearHistory() async {
-    setState(() {
-      _callHistory.clear();
-    });
-
-    await _saveHistory();
-  }
-
-  Future<void> startCall() async {
-    final id = callIdController.text.trim();
-
-    if (id.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ط£ط¯ط®ظ„ ID ط§ظ„ظ…ط³طھط®ط¯ظ… ط§ظ„ط°ظٹ طھط±ظٹط¯ ط§ظ„ط§طھطµط§ظ„ ط¨ظ‡')),
-      );
-      return;
-    }
-
-    if (int.tryParse(id) == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ID ط§ظ„ظ…ط³طھط®ط¯ظ… ظٹط¬ط¨ ط£ظ† ظٹظƒظˆظ† ط£ط±ظ‚ط§ظ…ظ‹ط§ ظپظ‚ط·')),
-      );
-      return;
-    }
-
-    final session = CallSession.instance;
-
-    if (!session.loggedIn) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('ظٹط¬ط¨ طھط³ط¬ظٹظ„ ط§ظ„ط¯ط®ظˆظ„ ط£ظˆظ„ظ‹ط§')));
-      return;
-    }
-
-    if (id == session.userId) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ط§ظ„ط§طھطµط§ظ„ ط¨ط§ظ„ظ†ظپط³ ط؛ظٹط± ظ…ط³ظ…ظˆط­')),
-      );
-      return;
-    }
-
-    final name = 'ط§ظ„ظ…ط³طھط®ط¯ظ… $id';
-
-    await _addHistory(name: name, id: id, incoming: false);
-
-      final callId = const Uuid().v4();
-
-      final manager = RtcCallManager.instance;
-      await manager.prepareNativeOutgoingCall(callId);
-
-      bool started = false;
-      var permissionDenied = false;
-      try {
-        started = await _telecomChannel.invokeMethod<bool>(
-              'placeCNCall',
-              <String, dynamic>{
-                'callId': callId,
-                'targetId': id,
-              },
-            ) ??
-            false;
-      } on PlatformException catch (error) {
-        permissionDenied = error.code == 'permission_denied';
-        print(
-          '[CN CALL][TELECOM OUTGOING FAILED] call_id=$callId '
-          'code=${error.code} message=${error.message}',
-        );
-      } catch (error) {
-        print('[CN CALL][TELECOM OUTGOING FAILED] call_id=$callId error=$error');
-      }
-
-      print(
-        '[CN CALL][TELECOM OUTGOING RESULT] '
-        'started=$started call_id=$callId',
-      );
-
-      if (!started) {
-        await manager.abortNativeOutgoingCall(callId);
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              permissionDenied
-                  ? 'ظ„ط¨ط¯ط، ط§ظ„ظ…ظƒط§ظ„ظ…ط© ظٹط¬ط¨ ظ…ظ†ط­ طµظ„ط§ط­ظٹط© ط¥ط¬ط±ط§ط، ط§ظ„ظ…ظƒط§ظ„ظ…ط§طھ ظ…ظ† ط¥ط¹ط¯ط§ط¯ط§طھ CN CALL'
-                  : 'طھط¹ط°ط± ط¨ط¯ط، ط§ظ„ظ…ظƒط§ظ„ظ…ط©',
-            ),
-            backgroundColor: permissionDenied ? Colors.red.shade800 : null,
-            action: permissionDenied
-                ? SnackBarAction(
-                    label: 'ط§ظ„ط¥ط¹ط¯ط§ط¯ط§طھ',
-                    onPressed: () async {
-                      try {
-                        await _telecomChannel
-                            .invokeMethod<bool>('openAppSettings');
-                      } on PlatformException {
-                        // Best-effort; the permission can be toggled manually.
-                      }
-                    },
-                  )
-                : null,
-          ),
-        );
-        return;
-      }
-
-      // Bind the in-app manager to the SAME native Telecom call: the single
-      // callId minted here travels unchanged into CNCallEngine via the
-      // placeCNCall extras. The CallScreen then mirrors the native connection
-      // (active/ended events) and ends it through Telecom â€” no second Uuid,
-      // no Flutter WebSocket, no separate signaling for this callId.
-      manager.remoteUserId = id;
-      await manager.startOutgoingRingback(callId);
-
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => CallScreen(name: name, id: id)),
-      );
-    }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     callIdController.dispose();
     super.dispose();
   }
@@ -1044,14 +760,8 @@ class _HomeScreenState extends State<HomeScreen>
             style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1.5),
           ),
           actions: [
-            if (!_canUseFullScreenIntent)
-              IconButton(
-                tooltip: 'ظپط¹ظ‘ظ„ ط§ظ„ظ…ظƒط§ظ„ظ…ط§طھ ط¨ظ…ظ„ط، ط§ظ„ط´ط§ط´ط©',
-                onPressed: _openFullScreenIntentSettings,
-                icon: const Icon(Icons.fullscreen_rounded),
-              ),
             IconButton(
-              tooltip: 'طھط³ط¬ظٹظ„ ط§ظ„ط®ط±ظˆط¬',
+              tooltip: 'تسجيل الخروج',
               onPressed: () async {
                 final navigator = Navigator.of(context);
 
@@ -1061,24 +771,24 @@ class _HomeScreenState extends State<HomeScreen>
                     return AlertDialog(
                       backgroundColor: const Color(0xFF151515),
                       title: const Text(
-                        'طھط³ط¬ظٹظ„ ط§ظ„ط®ط±ظˆط¬',
+                        'تسجيل الخروج',
                         textDirection: TextDirection.rtl,
                       ),
                       content: const Text(
-                        'ظ‡ظ„ طھط±ظٹط¯ طھط³ط¬ظٹظ„ ط§ظ„ط®ط±ظˆط¬ ظ…ظ† ط§ظ„ط­ط³ط§ط¨ ط§ظ„ط­ط§ظ„ظٹطں',
+                        'هل تريد تسجيل الخروج من الحساب الحالي؟',
                         textDirection: TextDirection.rtl,
                       ),
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.pop(dialogContext, false),
-                          child: const Text('ط¥ظ„ط؛ط§ط،'),
+                          child: const Text('إلغاء'),
                         ),
                         FilledButton(
                           onPressed: () => Navigator.pop(dialogContext, true),
                           style: FilledButton.styleFrom(
                             backgroundColor: Colors.red,
                           ),
-                          child: const Text('طھط³ط¬ظٹظ„ ط§ظ„ط®ط±ظˆط¬'),
+                          child: const Text('تسجيل الخروج'),
                         ),
                       ],
                     );
@@ -1140,7 +850,7 @@ class _HomeScreenState extends State<HomeScreen>
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Text(
-                                    'ظ…ط±ط­ط¨ظ‹ط§ ط¨ظƒ',
+                                    'مرحباً بك',
                                     style: TextStyle(
                                       color: Colors.grey,
                                       fontSize: 13,
@@ -1149,7 +859,7 @@ class _HomeScreenState extends State<HomeScreen>
                                   const SizedBox(height: 4),
                                   Text(
                                     CallSession.instance.displayName ??
-                                        'ظ…ط³طھط®ط¯ظ… CN CALL',
+                                        'مستخدم CN CALL',
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 22,
@@ -1172,9 +882,12 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
 
                       const SizedBox(height: 20),
-
-      ),
-    );
+                    ],
+                  ),
+                ),
+          ),
+        ),
+      );
   }
 }
 
@@ -1219,27 +932,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
         username.isEmpty ||
         password.isEmpty ||
         confirmPassword.isEmpty) {
-      _message('ط£ظƒظ…ظ„ ط¬ظ…ظٹط¹ ط§ظ„ط¨ظٹط§ظ†ط§طھ');
+      _message('أكمل جميع البيانات');
       return;
     }
 
     if (int.tryParse(userId) == null) {
-      _message('ID ط§ظ„ظ…ط³طھط®ط¯ظ… ظٹط¬ط¨ ط£ظ† ظٹظƒظˆظ† ط£ط±ظ‚ط§ظ…ظ‹ط§ ظپظ‚ط·');
+      _message('ID المستخدم يجب أن يكون أرقامًا فقط');
       return;
     }
 
     if (username.length < 3) {
-      _message('ط§ط³ظ… ط§ظ„ظ…ط³طھط®ط¯ظ… ظٹط¬ط¨ ط£ظ† ظٹظƒظˆظ† 3 ط£ط­ط±ظپ ط¹ظ„ظ‰ ط§ظ„ط£ظ‚ظ„');
+      _message('اسم المستخدم يجب أن يكون 3 أحرف على الأقل');
       return;
     }
 
     if (password.length < 6) {
-      _message('ظƒظ„ظ…ط© ط§ظ„ظ…ط±ظˆط± ظٹط¬ط¨ ط£ظ† طھظƒظˆظ† 6 ط£ط­ط±ظپ ط¹ظ„ظ‰ ط§ظ„ط£ظ‚ظ„');
+      _message('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
       return;
     }
 
     if (password != confirmPassword) {
-      _message('ظƒظ„ظ…طھط§ ط§ظ„ظ…ط±ظˆط± ط؛ظٹط± ظ…طھط·ط§ط¨ظ‚طھظٹظ†');
+      _message('كلمتا المرور غير متطابقتين');
       return;
     }
 
@@ -1255,7 +968,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     if (!success) {
       _message(
-        result['message']?.toString() ?? 'طھط¹ط°ط± ط¥ظ†ط´ط§ط، ط§ظ„ط­ط³ط§ط¨',
+        result['message']?.toString() ?? 'تعذر إنشاء الحساب',
       );
       return;
     }
@@ -1270,14 +983,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final loginSuccess = loginResult['success'] == true;
     if (!loginSuccess) {
       _message(
-        loginResult['message']?.toString() ?? 'طھظ… ط¥ظ†ط´ط§ط، ط§ظ„ط­ط³ط§ط¨طŒ ظˆظ„ظƒظ† طھط¹ط°ط± طھط³ط¬ظٹظ„ ط§ظ„ط¯ط®ظˆظ„ ط§ظ„طھظ„ظ‚ط§ط¦ظٹ',
+        loginResult['message']?.toString() ?? 'تم إنشاء الحساب، ولكن تعذر تسجيل الدخول التلقائي',
       );
       return;
     }
 
     final user = loginResult['user'];
     if (user is! Map) {
-      _message('ط¨ظٹط§ظ†ط§طھ ط§ظ„ظ…ط³طھط®ط¯ظ… ط؛ظٹط± طµط§ظ„ط­ط©');
+      _message('بيانات المستخدم غير صالحة');
       return;
     }
 
@@ -1289,7 +1002,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         loggedUserId.isEmpty ||
         accessToken == null ||
         accessToken.isEmpty) {
-      _message('ط¨ظٹط§ظ†ط§طھ ط§ظ„ط¬ظ„ط³ط© ظ†ط§ظ‚طµط©');
+      _message('بيانات الجلسة ناقصة');
       return;
     }
 
@@ -1303,7 +1016,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     if (!mounted) return;
 
-    _message('طھظ… ط¥ظ†ط´ط§ط، ط§ظ„ط­ط³ط§ط¨ ظˆطھط³ط¬ظٹظ„ ط§ظ„ط¯ط®ظˆظ„ ط¨ظ†ط¬ط§ط­', success: true);
+    _message('تم إنشاء الحساب وتسجيل الدخول بنجاح', success: true);
 
     Navigator.pushAndRemoveUntil(
       context,
@@ -1328,6 +1041,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
+        backgroundColor: const Color(0xFF050505),
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -1349,7 +1063,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     const SizedBox(height: 22),
 
                     const Text(
-                      'ط¥ظ†ط´ط§ط، ط­ط³ط§ط¨',
+                      'إنشاء حساب',
                       style: TextStyle(
                         fontSize: 30,
                         fontWeight: FontWeight.w800,
@@ -1359,7 +1073,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     const SizedBox(height: 8),
 
                     Text(
-                      'ط£ظ†ط´ط¦ ط­ط³ط§ط¨ظƒ ظپظٹ CN CALL',
+                      'أنشئ حسابك في CN CALL',
                       style: TextStyle(
                         color: Colors.grey.shade500,
                         fontSize: 14,
@@ -1370,8 +1084,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                     _Field(
                       controller: userIdController,
-                      label: 'ID ط§ظ„ظ…ط³طھط®ط¯ظ…',
-                      hint: 'ط§ظ„ط±ظ‚ظ… ط§ظ„ط°ظٹ طھط³طھط®ط¯ظ…ظ‡ ظ„طھط³ط¬ظٹظ„ ط§ظ„ط¯ط®ظˆظ„ ظˆط§ظ„طھظˆط§طµظ„',
+                      label: 'ID المستخدم',
+                      hint: 'الرقم الذي تستخدمه لتسجيل الدخول والتواصل',
                       icon: Icons.badge_outlined,
                       keyboardType: TextInputType.number,
                     ),
@@ -1380,8 +1094,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                     _Field(
                       controller: usernameController,
-                      label: 'ط§ط³ظ… ط§ظ„ظ…ط³طھط®ط¯ظ…',
-                      hint: 'ط§ظ„ط§ط³ظ… ط§ظ„ط°ظٹ ط³ظٹط¸ظ‡ط± ظ„ظ„ط¢ط®ط±ظٹظ† ط£ط«ظ†ط§ط، ط§ظ„ظ…ظƒط§ظ„ظ…ط©',
+                      label: 'اسم المستخدم',
+                      hint: 'الاسم الذي سيظهر للآخرين أثناء المكالمة',
                       icon: Icons.person_outline,
                     ),
 
@@ -1389,8 +1103,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                     _Field(
                       controller: passwordController,
-                      label: 'ظƒظ„ظ…ط© ط§ظ„ظ…ط±ظˆط±',
-                      hint: '6 ط£ط­ط±ظپ ط¹ظ„ظ‰ ط§ظ„ط£ظ‚ظ„',
+                      label: 'كلمة المرور',
+                      hint: '6 أحرف على الأقل',
                       icon: Icons.lock_outline,
                       obscureText: hidePassword,
                       suffix: IconButton(
@@ -1411,8 +1125,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                     _Field(
                       controller: confirmPasswordController,
-                      label: 'طھط£ظƒظٹط¯ ظƒظ„ظ…ط© ط§ظ„ظ…ط±ظˆط±',
-                      hint: 'ط£ط¹ط¯ ظƒطھط§ط¨ط© ظƒظ„ظ…ط© ط§ظ„ظ…ط±ظˆط±',
+                      label: 'تأكيد كلمة المرور',
+                      hint: 'أعد كتابة كلمة المرور',
                       icon: Icons.lock_reset_outlined,
                       obscureText: hideConfirmPassword,
                       suffix: IconButton(
@@ -1432,7 +1146,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     const SizedBox(height: 24),
 
                     _PrimaryButton(
-                      text: 'ط¥ظ†ط´ط§ط، ط§ظ„ط­ط³ط§ط¨',
+                      text: 'إنشاء الحساب',
                       onPressed: createAccount,
                     ),
 
@@ -1441,8 +1155,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     TextButton(
                       onPressed: () => Navigator.pop(context),
                       child: const Text(
-                        'ظ„ط¯ظٹ ط­ط³ط§ط¨ ط¨ط§ظ„ظپط¹ظ„',
-                        style: TextStyle(color: Color(0xFF00E676)),
+                        'لدي حساب بالفعل',
+                        style: TextStyle(
+                          color: Color(0xFF00E676),
+                        ),
                       ),
                     ),
 
@@ -1574,7 +1290,7 @@ class _Footer extends StatelessWidget {
         ),
         const SizedBox(height: 3),
         Text(
-          'ظ‡ط´ط§ظ… ط§ظ„ط±ظٹظ…ظٹ',
+          'هشام الريمي',
           style: TextStyle(
             color: Colors.grey.shade800.withValues(alpha: .35),
             fontSize: 9,
