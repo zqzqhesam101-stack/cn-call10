@@ -283,19 +283,6 @@ class RtcCallManager {
         'call_id=$connectedCallId',
       );
 
-      if (connectedCallId.isNotEmpty &&
-          target != null &&
-          target.isNotEmpty &&
-          session.loggedIn &&
-          session.socket.connected) {
-        unawaited(session.socket.sendGuaranteed({
-          'type': 'connected',
-          'call_id': connectedCallId,
-          'target_id': target,
-          'from_id': session.userId,
-        }));
-      }
-
       onConnected?.call();
     };
 
@@ -336,8 +323,6 @@ class RtcCallManager {
       _callStartExpiresAt = expiresAtRaw is int
           ? expiresAtRaw
           : int.tryParse(expiresAtRaw?.toString() ?? '');
-
-      await _startRinging(callId: messageCallId!, expiresAt: _callStartExpiresAt);
 
       // call_started itself confirms that the server accepted the call.
       // target_online only tells us whether the target has a live WebSocket.
@@ -513,20 +498,7 @@ class RtcCallManager {
       await _stopRinging();
 
       if (sendSignal && callId != null && target != null && session.loggedIn) {
-        try {
-          // Terminal control messages must get a real ready handshake too;
-          // dropping them because a reconnect has just started leaves the
-          // other Samsung UI ringing until timeout.
-          await session.ensureSocketReady();
-          await session.socket.sendGuaranteed({
-            'type': signalType ?? 'hangup',
-            'call_id': callId,
-            'target_id': target,
-          });
-          print('[CN CALL][CALL TERMINAL] call_id=$callId type=${signalType ?? 'hangup'}');
-        } catch (error) {
-          print('[CN CALL][CALL TERMINAL SEND FAILED] call_id=$callId error=$error');
-        }
+        print('[CN CALL][CALL TERMINAL] native owns terminal signaling call_id=$callId type=${signalType ?? 'hangup'}');
       }
 
       await livekit.disconnect();

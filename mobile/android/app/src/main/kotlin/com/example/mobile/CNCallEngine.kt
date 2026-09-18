@@ -74,6 +74,7 @@ object CNCallEngine {
      * into Connection state.
      */
     interface Callbacks {
+        fun onRemoteRingbackAvailabilityChanged(targetOnline: Boolean)
         fun onMediaReady()
         fun onDisconnected()
         fun onError(message: String)
@@ -179,6 +180,9 @@ object CNCallEngine {
         /** False after {"type":"session_invalid"}: signaling disabled. */
         @Volatile
         private var sessionTokenValid = true
+
+        @Volatile
+        private var shutdownPending = false
 
         /** Last WebSocket transport error, for diagnostics only. */
         @Volatile
@@ -340,6 +344,51 @@ object CNCallEngine {
             registerWebSocketListenerOnce()
             registerLiveKitListenerOnce()
             return true
+        }
+
+        fun bootstrapSignaling(context: Context): Boolean {
+            val appCtx = context.applicationContext
+            this.appContext = appCtx
+            NativeLiveKit.initialize(appCtx)
+            NativeWebSocketClient.configure(appCtx)
+            registerWebSocketListenerOnce()
+
+            val userId = NativeCallTokenHelper.restoreUserId(appCtx) ?: return false
+            val token = NativeCallTokenHelper.restoreAccessToken(appCtx) ?: return false
+            if (userId.isBlank() || token.isBlank()) return false
+
+            if (!NativeWebSocketClient.tryAcquireNativeOwnership(appCtx)) {
+                println("[CN CALL][ENGINE] bootstrapSignaling refused: failed to acquire native ownership")
+                return false
+            }
+
+            sessionTokenValid = true
+            shutdownPending = false
+            val connectedOrConnecting = NativeWebSocketClient.connect(userId.trim(), token.trim())
+            println("[CN CALL][ENGINE] bootstrapSignaling completed user_id=$userId ok=$connectedOrConnecting")
+            return connectedOrConnecting
+        }
+
+        fun shutdownSignaling(context: Context): Boolean {
+            val appCtx = context.applicationContext
+            if (CNCallRegistry.hasActiveCall()) {
+                shutdownPending = true
+                println("[CN CALL][ENGINE] shutdownSignaling deferred: active Telecom call exists")
+                return false
+            }
+            shutdownPending = false
+            releaseNativeOwnershipIfOwned()
+            println("[CN CALL][ENGINE] shutdownSignaling executed")
+            return true
+        }
+
+        fun notifyTelecomCallEnded(callId: String) {
+            clearScoredCall(callId, "telecom_ended")
+            if (shutdownPending && !CNCallRegistry.hasActiveCall()) {
+                shutdownPending = false
+                releaseNativeOwnershipIfOwned()
+                println("[CN CALL][ENGINE] deferred shutdownSignaling executed after Telecom call ended call_id=$callId")
+            }
         }
 
         override fun startIncoming(
@@ -963,6 +1012,7 @@ object CNCallEngine {
                             "[CN CALL][ENGINE] signaling call_started" +
                                 " call_id=$frameCallId target_online=$targetOnline",
                         )
+                        callbacks?.onRemoteRingbackAvailabilityChanged(targetOnline)
                     }
                 }
 
@@ -1367,6 +1417,32 @@ object CNCallEngine {
             ?: return unavailable("release", callId, callbacks)
 
         return currentDelegate.release(callId)
+    }
+
+    fun bootstrapSignaling(context: Context): Boolean {
+        if (delegate == null) {
+            delegate = CNCallEngineImpl()
+        }
+        if (state == State.UNINITIALIZED || state == State.TERMINATED) {
+            state = State.INITIALIZED
+        }
+        val ready = (delegate as? CNCallEngineImpl)?.bootstrapSignaling(context) == true
+        if (ready && state != State.IN_CALL) {
+            state = State.COMPONENTS_READY
+        }
+        return ready
+    }
+
+    fun shutdownSignaling(context: Context): Boolean {
+        return (delegate as? CNCallEngineImpl)?.shutdownSignaling(context) ?: false
+    }
+
+    fun notifyTelecomCallEnded(callId: String) {
+        (delegate as? CNCallEngineImpl)?.notifyTelecomCallEnded(callId)
+    }
+
+    fun hasActiveCall(): Boolean {
+        return CNCallRegistry.hasActiveCall()
     }
 
     // ------------------------------------------------------------

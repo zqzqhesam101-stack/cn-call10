@@ -319,6 +319,17 @@ class MainActivity : FlutterActivity() {
                             result.success(true)
                         }
                     }
+                    "syncCredentials" -> {
+                        val ok = CNCallEngine.bootstrapSignaling(applicationContext)
+                        result.success(ok)
+                    }
+                    "logout" -> {
+                        val ok = CNCallEngine.shutdownSignaling(applicationContext)
+                        result.success(ok)
+                    }
+                    "hasActiveCall" -> {
+                        result.success(CNCallEngine.hasActiveCall())
+                    }
                     else -> result.notImplemented()
                 }
             }

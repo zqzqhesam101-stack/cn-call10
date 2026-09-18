@@ -27,6 +27,13 @@ class CNCallConnection(
     private var ringbackPlayer: MediaPlayer? = null
     private var ringbackGeneration = 0L
     internal val engineCallbacks = object : CNCallEngine.Callbacks {
+        override fun onRemoteRingbackAvailabilityChanged(targetOnline: Boolean) {
+            if (terminal || active) return
+            if (!incoming && targetOnline) {
+                startOutgoingRingback()
+            }
+        }
+
         override fun onMediaReady() {
             if (terminal || active) return
 
@@ -81,9 +88,6 @@ class CNCallConnection(
     fun beginDialing() {
         if (!terminal) {
             setDialing()
-            if (!incoming) {
-                startOutgoingRingback()
-            }
         }
     }
 
@@ -358,6 +362,7 @@ class CNCallConnection(
     private fun destroyAndRemove() {
         CNCallRegistry.remove(callId)
         CNCallNotification.cancel(appContext, callId)
+        CNCallEngine.notifyTelecomCallEnded(callId)
         destroy()
     }
 }
