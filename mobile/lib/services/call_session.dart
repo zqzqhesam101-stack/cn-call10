@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'call_socket.dart';
@@ -106,14 +107,11 @@ class CallSession {
     await prefs.setString('cn_call_display_name', name);
     await prefs.setString('cn_call_access_token', token);
 
-    socket.connect(id, token).then(
-      (_) {},
-      onError: (Object error, StackTrace stackTrace) {
-        print('BACKGROUND SOCKET CONNECT ERROR: $error');
-      },
-    );
-
-    // استقبال رسائل المكالمات يتم الآن بواسطة RtcCallManager.
+    try {
+      await const MethodChannel('cn_call/call').invokeMethod('syncCredentials');
+    } catch (e) {
+      print('[CN CALL][SESSION] syncCredentials method channel error: $e');
+    }
   }
 
   /// Ownership guard. Two callers:
@@ -173,6 +171,11 @@ class CallSession {
   }
 
   Future<void> invalidateSession() async {
+    try {
+      await const MethodChannel('cn_call/call').invokeMethod('logout');
+    } catch (e) {
+      print('[CN CALL][SESSION] logout method channel error: $e');
+    }
     await RtcCallManager.instance.endForSession(sendSignal: false);
     socket.disconnect();
     await releaseWsOwnership();
@@ -208,7 +211,11 @@ class CallSession {
     displayName = name;
     accessToken = token;
 
-    await socket.connect(id, token);
+    try {
+      await const MethodChannel('cn_call/call').invokeMethod('syncCredentials');
+    } catch (e) {
+      print('[CN CALL][SESSION] syncCredentials method channel error: $e');
+    }
 
     return true;
   }
@@ -243,15 +250,27 @@ class CallSession {
     if (id == null || id.isEmpty || token == null || token.isEmpty) {
       throw StateError('No authenticated CN CALL session');
     }
-    if (!socket.connected) await socket.connect(id, token);
-    if (!socket.connected) throw StateError('CN CALL WebSocket is not ready');
+    try {
+      await const MethodChannel('cn_call/call').invokeMethod('syncCredentials');
+    } catch (_) {}
   }
 
 
-  Future<void> logout() async {
+  Future<bool> logout() async {
+    try {
+      final hasActive = await const MethodChannel('cn_call/call').invokeMethod<bool>('hasActiveCall') ?? false;
+      if (hasActive) {
+        print('[CN CALL][SESSION] logout refused: native Telecom call is active');
+        return false;
+      }
+      await const MethodChannel('cn_call/call').invokeMethod('logout');
+    } catch (e) {
+      print('[CN CALL][SESSION] logout method channel error: $e');
+    }
+
     await _messageSubscription?.cancel();
     _messageSubscription = null;
-    await RtcCallManager.instance.endForSession();
+    await RtcCallManager.instance.endForSession(sendSignal: false);
     socket.disconnect();
     await releaseWsOwnership();
 
@@ -263,6 +282,7 @@ class CallSession {
     await prefs.remove('cn_call_user_id');
     await prefs.remove('cn_call_display_name');
     await prefs.remove('cn_call_access_token');
+    return true;
   }
 
   Future<void> dispose() async {
